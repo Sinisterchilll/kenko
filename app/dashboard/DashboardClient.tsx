@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { WINDOWS, DAYS, aggregate, type AggResult, type DayRecord, type WindowData, type HubEntry } from "@/lib/data";
+import { HUBS, WINDOWS, DAYS, aggregate, type AggResult, type DayRecord, type WindowData, type HubEntry } from "@/lib/data";
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
 
@@ -589,6 +589,7 @@ export default function DashboardClient({ user }: { user: string }) {
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [hubOpen, setHubOpen] = useState(false);
   const [rangeOpen, setRangeOpen] = useState(false);
+  const [useRealData, setUseRealData] = useState(true);
 
   // ── Real data ──────────────────────────────────────────────────────────────
   const [days, setDays] = useState<DayRecord[]>(DAYS);
@@ -628,23 +629,28 @@ export default function DashboardClient({ user }: { user: string }) {
   }, [avatarOpen]);
 
   const rangeDays = useMemo<DayRecord[]>(() => {
+    const src = useRealData && days !== DAYS ? days : DAYS;
     const now = new Date();
-    if (dateRange === "today") return days.slice(-1);
-    if (dateRange === "7d")    return days.slice(-7);
-    if (dateRange === "mtd")   return days.filter(d => d.date.getMonth() === now.getMonth() && d.date.getFullYear() === now.getFullYear());
-    return days;
-  }, [dateRange, days]);
+    if (dateRange === "today") return src.slice(-1);
+    if (dateRange === "7d")    return src.slice(-7);
+    if (dateRange === "mtd")   return src.filter(d => d.date.getMonth() === now.getMonth() && d.date.getFullYear() === now.getFullYear());
+    return src;
+  }, [dateRange, days, useRealData]);
 
   const prevDays = useMemo<DayRecord[]>(() => {
-    if (dateRange === "today") return days.slice(-2, -1);
-    if (dateRange === "7d")    return days.slice(-14, -7);
+    const src = useRealData && days !== DAYS ? days : DAYS;
+    if (dateRange === "today") return src.slice(-2, -1);
+    if (dateRange === "7d")    return src.slice(-14, -7);
     return [];
-  }, [dateRange, days]);
+  }, [dateRange, days, useRealData]);
 
-  const activeDay = days[days.length - 1] ?? DAYS[DAYS.length - 1];
-  const summaryAgg = useMemo(() => aggregate(rangeDays, hub, hubs.length ? hubs : undefined), [rangeDays, hub, hubs]);
-  const prevAgg    = useMemo(() => aggregate(prevDays,  hub, hubs.length ? hubs : undefined), [prevDays,  hub, hubs]);
-  const dailyAgg   = useMemo(() => aggregate([activeDay], hub, hubs.length ? hubs : undefined), [activeDay, hub, hubs]);
+  const activeDays = useRealData && days !== DAYS ? days : DAYS;
+  const activeHubs = useRealData && hubs.length > 0 ? hubs : HUBS;
+
+  const activeDay  = activeDays[activeDays.length - 1] ?? DAYS[DAYS.length - 1];
+  const summaryAgg = useMemo(() => aggregate(rangeDays, hub, activeHubs.length ? activeHubs : undefined), [rangeDays, hub, activeHubs]);
+  const prevAgg    = useMemo(() => aggregate(prevDays,  hub, activeHubs.length ? activeHubs : undefined), [prevDays,  hub, activeHubs]);
+  const dailyAgg   = useMemo(() => aggregate([activeDay], hub, activeHubs.length ? activeHubs : undefined), [activeDay, hub, activeHubs]);
 
   const agg: AggResult = tab === "summary" ? summaryAgg : dailyAgg;
   const prev: AggResult | null = tab === "summary" && prevDays.length ? prevAgg : null;
@@ -677,6 +683,27 @@ export default function DashboardClient({ user }: { user: string }) {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <button
+            onClick={() => setUseRealData(v => !v)}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              padding: "5px 10px", borderRadius: 20,
+              border: `1px solid ${useRealData ? "var(--accent)" : "var(--line)"}`,
+              background: useRealData ? "rgba(212,255,58,0.08)" : "var(--bg-1)",
+              cursor: "pointer", fontFamily: "var(--font-mono)", fontSize: 10,
+              letterSpacing: "0.12em", textTransform: "uppercase",
+              color: useRealData ? "var(--accent)" : "var(--text-mute)",
+              transition: "all 150ms",
+            }}
+          >
+            <span style={{
+              width: 6, height: 6, borderRadius: 6,
+              background: useRealData ? "var(--accent)" : "#444",
+              transition: "background 150ms",
+            }} />
+            {useRealData ? "Live data" : "Demo data"}
+          </button>
+
           <span style={{
             fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)",
             display: "flex", alignItems: "center", gap: 8,
@@ -767,13 +794,13 @@ export default function DashboardClient({ user }: { user: string }) {
       >
         <div onClick={e => e.stopPropagation()}>
           <Dropdown
-            label={hub === "all" ? `All ${hubs.length || "—"} hubs` : (hubs.find(h => h.id === hub)?.name ?? "Hub")}
+            label={hub === "all" ? `All ${activeHubs.length || "—"} hubs` : (activeHubs.find(h => h.id === hub)?.name ?? "Hub")}
             icon={<HubIcon />}
             open={hubOpen}
             onToggle={() => { setHubOpen(v => !v); setRangeOpen(false); }}
           >
-            <DropItem label={`All ${hubs.length || "—"} hubs`} sub="—" active={hub === "all"} onClick={() => { setHub("all"); setHubOpen(false); }} />
-            {hubs.map(h => (
+            <DropItem label={`All ${activeHubs.length || "—"} hubs`} sub="—" active={hub === "all"} onClick={() => { setHub("all"); setHubOpen(false); }} />
+            {activeHubs.map(h => (
               <DropItem key={h.id} label={h.name} sub={h.code} active={hub === h.id} onClick={() => { setHub(h.id); setHubOpen(false); }} />
             ))}
           </Dropdown>
@@ -834,7 +861,7 @@ export default function DashboardClient({ user }: { user: string }) {
                   Inflow · Delivered · Failed
                 </div>
               </div>
-              <TrendChart rangeDays={rangeDays} hub={hub} hubs={hubs.length ? hubs : []} />
+              <TrendChart rangeDays={rangeDays} hub={hub} hubs={activeHubs} />
             </>
           ) : (
             <>

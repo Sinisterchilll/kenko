@@ -30,10 +30,14 @@ export async function GET() {
 
     const { rows } = await pool.query<Row>(`
       SELECT
-        DATE(event_timestamp AT TIME ZONE 'Asia/Kolkata')                                        AS day,
-        COALESCE(NULLIF(TRIM(hub_name), ''), NULLIF(TRIM(hub_id), ''), 'Unknown')               AS hub,
+        (event_timestamp + INTERVAL '5 hours 30 minutes')::date                                   AS day,
+        COALESCE(NULLIF(TRIM(hub_name), ''), NULLIF(TRIM(hub_id), ''), 'Unknown')                AS hub,
         event_type,
-        TO_CHAR(DATE_TRUNC('30 minutes', event_timestamp AT TIME ZONE 'Asia/Kolkata'), 'HH24:MI') AS bucket_time,
+        TO_CHAR(
+          DATE_TRUNC('hour', event_timestamp + INTERVAL '5 hours 30 minutes') +
+          FLOOR(EXTRACT(MINUTE FROM event_timestamp + INTERVAL '5 hours 30 minutes') / 30)::int * INTERVAL '30 minutes',
+          'HH24:MI'
+        )                                                                                          AS bucket_time,
         COUNT(*)::int                                                                              AS cnt
       FROM order_events
       WHERE event_timestamp >= NOW() - INTERVAL '30 days'
@@ -104,10 +108,13 @@ export async function GET() {
           windows[win.id] = { buckets, total, delivered, failed, inTransit };
         }
 
-        const inflow    = WINDOWS.reduce((a, w) => a + windows[w.id].total,     0);
-        const delivered = WINDOWS.reduce((a, w) => a + windows[w.id].delivered, 0);
-        const failed    = WINDOWS.reduce((a, w) => a + windows[w.id].failed,    0);
-        const inTransit = WINDOWS.reduce((a, w) => a + windows[w.id].inTransit, 0);
+        // Totals from ALL events in the day — not restricted to window time ranges
+        const sum = (et: string) =>
+          Array.from(evMap.get(et)?.values() ?? []).reduce((a, b) => a + b, 0);
+        const inflow    = sum('ORDER_CREATED');
+        const delivered = sum('DELIVERED');
+        const inTransit = sum('OUT_FOR_DELIVERY');
+        const failed    = Math.max(0, inflow - delivered - inTransit);
 
         hubsRecord[hub.id] = { windows, inflow, delivered, failed, inTransit };
         totals.inflow    += inflow;
