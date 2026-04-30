@@ -1,10 +1,12 @@
-export const HUBS = [
+export type HubEntry = { id: string; name: string; code: string; capacity?: number };
+
+export const HUBS: HubEntry[] = [
   { id: "kor", name: "Koramangala", code: "KOR", capacity: 35 },
   { id: "ind", name: "Indiranagar", code: "IND", capacity: 28 },
   { id: "hsr", name: "HSR Layout", code: "HSR", capacity: 22 },
   { id: "whf", name: "Whitefield", code: "WHF", capacity: 18 },
   { id: "jpn", name: "Jayanagar", code: "JPN", capacity: 20 },
-] as const;
+];
 
 export const WINDOWS = [
   { id: "slot1", label: "Slot 1", start: "07:00", end: "10:00" },
@@ -85,7 +87,7 @@ function genDay(date: Date, seedBase: number): DayRecord {
 
   HUBS.forEach((hub, hi) => {
     const rh = rng(seedBase + hi * 97 + 13);
-    const base = hub.capacity + Math.round(rh() * 6 - 3);
+    const base = (hub.capacity ?? 25) + Math.round(rh() * 6 - 3);
     const windows: Record<string, WindowData> = {};
 
     WINDOWS.forEach((w, wi) => {
@@ -138,11 +140,11 @@ export interface AggResult {
   windows: Record<string, WindowData>;
 }
 
-export function aggregate(days: DayRecord[], hubFilter: string): AggResult {
+export function aggregate(days: DayRecord[], hubFilter: string, hubs: HubEntry[] = HUBS): AggResult {
   const zero = () => ({ inflow: 0, inTransit: 0, delivered: 0, failed: 0 });
   const totals = zero();
   const hubsData: Record<string, ReturnType<typeof zero>> = {};
-  HUBS.forEach((h) => (hubsData[h.id] = zero()));
+  hubs.forEach((h) => (hubsData[h.id] = zero()));
 
   const windows: Record<string, WindowData> = {};
   WINDOWS.forEach((w) => {
@@ -158,6 +160,7 @@ export function aggregate(days: DayRecord[], hubFilter: string): AggResult {
   days.forEach((day) => {
     Object.entries(day.hubs).forEach(([hubId, h]) => {
       if (hubFilter !== "all" && hubFilter !== hubId) return;
+      if (!hubsData[hubId]) hubsData[hubId] = zero();
       (["inflow", "inTransit", "delivered", "failed"] as const).forEach((k) => {
         totals[k] += h[k];
         hubsData[hubId][k] += h[k];

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { HUBS, WINDOWS, DAYS, aggregate, type AggResult, type DayRecord, type WindowData } from "@/lib/data";
+import { WINDOWS, DAYS, aggregate, type AggResult, type DayRecord, type WindowData, type HubEntry } from "@/lib/data";
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
 
@@ -302,16 +302,17 @@ function BucketChart({ windows, showTransit }: { windows: AggResult["windows"]; 
 
 type TrendPoint = { date: Date; inflow: number; delivered: number; failed: number };
 
-function TrendChart({ rangeDays, hub }: { rangeDays: DayRecord[]; hub: string }) {
+function TrendChart({ rangeDays, hub, hubs }: { rangeDays: DayRecord[]; hub: string; hubs: HubEntry[] }) {
   const [tooltip, setTooltip] = useState<{ i: number; p: TrendPoint } | null>(null);
 
   const points: TrendPoint[] = rangeDays.map(day => {
     let inflow = 0, delivered = 0, failed = 0;
-    HUBS.forEach(h => {
+    hubs.forEach(h => {
       if (hub !== "all" && hub !== h.id) return;
-      inflow += day.hubs[h.id].inflow;
+      if (!day.hubs[h.id]) return;
+      inflow    += day.hubs[h.id].inflow;
       delivered += day.hubs[h.id].delivered;
-      failed += day.hubs[h.id].failed;
+      failed    += day.hubs[h.id].failed;
     });
     return { date: day.date, inflow, delivered, failed };
   });
@@ -589,6 +590,36 @@ export default function DashboardClient({ user }: { user: string }) {
   const [hubOpen, setHubOpen] = useState(false);
   const [rangeOpen, setRangeOpen] = useState(false);
 
+  // ── Real data ──────────────────────────────────────────────────────────────
+  const [days, setDays] = useState<DayRecord[]>(DAYS);
+  const [hubs, setHubs] = useState<HubEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const res = await fetch('/api/orders');
+        if (!res.ok) throw new Error('fetch failed');
+        const data = await res.json();
+        const parsed: DayRecord[] = data.days.map((d: DayRecord & { date: string }) => ({
+          ...d,
+          date: new Date(d.date),
+        }));
+        if (parsed.length > 0) {
+          setDays(parsed);
+          setHubs(data.hubs);
+        }
+      } catch (e) {
+        console.error('Failed to load order data', e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+    const interval = setInterval(fetchData, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     if (!avatarOpen) return;
     const fn = () => setAvatarOpen(false);
@@ -597,22 +628,23 @@ export default function DashboardClient({ user }: { user: string }) {
   }, [avatarOpen]);
 
   const rangeDays = useMemo<DayRecord[]>(() => {
-    if (dateRange === "today") return DAYS.slice(-1);
-    if (dateRange === "7d") return DAYS.slice(-7);
-    if (dateRange === "mtd") return DAYS.filter(d => d.date.getMonth() === 3);
-    return DAYS;
-  }, [dateRange]);
+    const now = new Date();
+    if (dateRange === "today") return days.slice(-1);
+    if (dateRange === "7d")    return days.slice(-7);
+    if (dateRange === "mtd")   return days.filter(d => d.date.getMonth() === now.getMonth() && d.date.getFullYear() === now.getFullYear());
+    return days;
+  }, [dateRange, days]);
 
   const prevDays = useMemo<DayRecord[]>(() => {
-    if (dateRange === "today") return DAYS.slice(-2, -1);
-    if (dateRange === "7d") return DAYS.slice(-14, -7);
+    if (dateRange === "today") return days.slice(-2, -1);
+    if (dateRange === "7d")    return days.slice(-14, -7);
     return [];
-  }, [dateRange]);
+  }, [dateRange, days]);
 
-  const activeDay = DAYS[DAYS.length - 1];
-  const summaryAgg = useMemo(() => aggregate(rangeDays, hub), [rangeDays, hub]);
-  const prevAgg = useMemo(() => aggregate(prevDays, hub), [prevDays, hub]);
-  const dailyAgg = useMemo(() => aggregate([activeDay], hub), [activeDay, hub]);
+  const activeDay = days[days.length - 1] ?? DAYS[DAYS.length - 1];
+  const summaryAgg = useMemo(() => aggregate(rangeDays, hub, hubs.length ? hubs : undefined), [rangeDays, hub, hubs]);
+  const prevAgg    = useMemo(() => aggregate(prevDays,  hub, hubs.length ? hubs : undefined), [prevDays,  hub, hubs]);
+  const dailyAgg   = useMemo(() => aggregate([activeDay], hub, hubs.length ? hubs : undefined), [activeDay, hub, hubs]);
 
   const agg: AggResult = tab === "summary" ? summaryAgg : dailyAgg;
   const prev: AggResult | null = tab === "summary" && prevDays.length ? prevAgg : null;
@@ -721,8 +753,10 @@ export default function DashboardClient({ user }: { user: string }) {
         <span style={{
           marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11,
           color: "var(--line-2)", letterSpacing: "0.08em", padding: "14px 0",
+          display: "flex", alignItems: "center", gap: 8,
         }}>
-          Refreshes every 60s
+          {loading && <span style={{ width: 6, height: 6, borderRadius: 6, background: "#f0c040", display: "inline-block", animation: "pulse 1s ease-in-out infinite" }} />}
+          {loading ? "Loading..." : "Refreshes every 60s"}
         </span>
       </div>
 
@@ -733,13 +767,13 @@ export default function DashboardClient({ user }: { user: string }) {
       >
         <div onClick={e => e.stopPropagation()}>
           <Dropdown
-            label={hub === "all" ? "All 5 hubs" : (HUBS.find(h => h.id === hub)?.name ?? "Hub")}
+            label={hub === "all" ? `All ${hubs.length || "—"} hubs` : (hubs.find(h => h.id === hub)?.name ?? "Hub")}
             icon={<HubIcon />}
             open={hubOpen}
             onToggle={() => { setHubOpen(v => !v); setRangeOpen(false); }}
           >
-            <DropItem label="All 5 hubs" sub="—" active={hub === "all"} onClick={() => { setHub("all"); setHubOpen(false); }} />
-            {HUBS.map(h => (
+            <DropItem label={`All ${hubs.length || "—"} hubs`} sub="—" active={hub === "all"} onClick={() => { setHub("all"); setHubOpen(false); }} />
+            {hubs.map(h => (
               <DropItem key={h.id} label={h.name} sub={h.code} active={hub === h.id} onClick={() => { setHub(h.id); setHubOpen(false); }} />
             ))}
           </Dropdown>
@@ -800,7 +834,7 @@ export default function DashboardClient({ user }: { user: string }) {
                   Inflow · Delivered · Failed
                 </div>
               </div>
-              <TrendChart rangeDays={rangeDays} hub={hub} />
+              <TrendChart rangeDays={rangeDays} hub={hub} hubs={hubs.length ? hubs : []} />
             </>
           ) : (
             <>
