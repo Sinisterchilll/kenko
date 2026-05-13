@@ -1,16 +1,33 @@
-export type HubEntry = { id: string; name: string; code: string; capacity?: number };
+export type HubEntry = { id: string; name: string; code: string; capacity?: number; dbName: string };
 
 export const HUBS: HubEntry[] = [
-  { id: "kor", name: "Koramangala", code: "KOR", capacity: 35 },
-  { id: "ind", name: "Indiranagar", code: "IND", capacity: 28 },
-  { id: "hsr", name: "HSR Layout", code: "HSR", capacity: 22 },
-  { id: "whf", name: "Whitefield", code: "WHF", capacity: 18 },
-  { id: "jpn", name: "Jayanagar", code: "JPN", capacity: 20 },
+  { id: "kor", name: "Koramangala", code: "KOR", capacity: 35, dbName: "Kenko Koramangala" },
+  { id: "ind", name: "Indiranagar", code: "IND", capacity: 28, dbName: "Kenko Indiranagar" },
+  { id: "hsr", name: "HSR Layout",  code: "HSR", capacity: 22, dbName: "Kenko HSR" },
+  { id: "whf", name: "Whitefield",  code: "WHF", capacity: 18, dbName: "Kenko Whitefield" },
+  { id: "jpn", name: "Jayanagar",   code: "JPN", capacity: 20, dbName: "Kenko Jayanagar" },
 ];
 
+// ─── Live DB filter ───────────────────────────────────────────────────────────
+// Only one hub is active in production. All live DB queries must include:
+//   WHERE hub_name = 'Kenko HSR'
+export const LIVE_HUB_DB_NAME = "Kenko HSR";
+export const LIVE_HUB_ID = "hsr";
+
+// Example live fetch stub — replace mock DAYS with a real call like:
+//
+// async function fetchOrders(fromDate: Date, toDate: Date) {
+//   return db.query(
+//     `SELECT * FROM orders
+//      WHERE hub_name = ?
+//        AND delivery_date BETWEEN ? AND ?`,
+//     [LIVE_HUB_DB_NAME, fromDate, toDate]
+//   );
+// }
+
 export const WINDOWS = [
-  { id: "slot1", label: "Slot 1", start: "07:00", end: "10:00" },
-  { id: "slot2", label: "Slot 2", start: "12:00", end: "15:00" },
+  { id: "slot1", label: "Slot 1", start: "11:30", end: "14:30" },  // Lunch window
+  { id: "slot2", label: "Slot 2", start: "17:30", end: "20:30" },  // Dinner window (live data: 17:55–20:40 IST)
 ] as const;
 
 export type HubId = (typeof HUBS)[number]["id"];

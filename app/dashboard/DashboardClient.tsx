@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { HUBS, WINDOWS, DAYS, aggregate, type AggResult, type DayRecord, type WindowData, type HubEntry } from "@/lib/data";
+import { HUBS, WINDOWS, DAYS, LIVE_HUB_ID, aggregate, type AggResult, type DayRecord, type WindowData, type HubEntry } from "@/lib/data";
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
 
@@ -584,7 +584,7 @@ const RANGES = [
 export default function DashboardClient({ user }: { user: string }) {
   const router = useRouter();
   const [tab, setTab] = useState<"summary" | "daily">("summary");
-  const [hub, setHub] = useState("all");
+  const [hub, setHub] = useState(LIVE_HUB_ID); // locked to Kenko HSR (live DB: WHERE hub_name = 'Kenko HSR')
   const [dateRange, setDateRange] = useState("14d");
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [hubOpen, setHubOpen] = useState(false);

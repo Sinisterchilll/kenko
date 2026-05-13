@@ -3,6 +3,10 @@ import { getPool } from '@/lib/db';
 import { WINDOWS } from '@/lib/data';
 import type { DayRecord, HubDayData, WindowData, HubEntry } from '@/lib/data';
 
+// Only show orders for this hub
+const KENKO_HUB_NAME = 'Kenko HSR | Kenko HSR';
+const KENKO_HUB: HubEntry = { id: 'hsr', name: 'HSR Layout', code: 'HSR', dbName: KENKO_HUB_NAME };
+
 function bucketsFor(win: { start: string; end: string }): string[] {
   const out: string[] = [];
   const [sh, sm] = win.start.split(':').map(Number);
@@ -18,7 +22,6 @@ function bucketsFor(win: { start: string; end: string }): string[] {
 
 type Row = {
   day: Date;
-  hub: string;
   event_type: string;
   bucket_time: string;
   cnt: number;
@@ -28,100 +31,85 @@ export async function GET() {
   try {
     const pool = getPool();
 
+    // Query only Kenko HSR orders for the last 30 days.
+    // OUT_FOR_DELIVERY = inflow (box dispatched from hub)
+    // DELIVERED        = delivered
+    // in-transit       = out_for_delivery - delivered (derived in JS)
     const { rows } = await pool.query<Row>(`
       SELECT
-        (event_timestamp + INTERVAL '5 hours 30 minutes')::date                                   AS day,
-        COALESCE(NULLIF(TRIM(hub_name), ''), NULLIF(TRIM(hub_id), ''), 'Unknown')                AS hub,
+        (event_timestamp + INTERVAL '5 hours 30 minutes')::date AS day,
         event_type,
         TO_CHAR(
           DATE_TRUNC('hour', event_timestamp + INTERVAL '5 hours 30 minutes') +
-          FLOOR(EXTRACT(MINUTE FROM event_timestamp + INTERVAL '5 hours 30 minutes') / 30)::int * INTERVAL '30 minutes',
+          FLOOR(EXTRACT(MINUTE FROM event_timestamp + INTERVAL '5 hours 30 minutes') / 30)::int
+            * INTERVAL '30 minutes',
           'HH24:MI'
-        )                                                                                          AS bucket_time,
-        COUNT(*)::int                                                                              AS cnt
+        ) AS bucket_time,
+        COUNT(*)::int AS cnt
       FROM order_events
-      WHERE event_timestamp >= NOW() - INTERVAL '30 days'
-      GROUP BY 1, 2, 3, 4
-      ORDER BY 1, 2, 3, 4
-    `);
+      WHERE hub_name = $1
+        AND event_timestamp >= NOW() - INTERVAL '30 days'
+      GROUP BY 1, 2, 3
+      ORDER BY 1, 2, 3
+    `, [KENKO_HUB_NAME]);
 
-    // ── Build lookup: day → hub → event_type → bucket_time → count ──────────
-    const hubSet = new Set<string>();
+    // ── Build lookup: day → event_type → bucket_time → count ─────────────────
     type BucketMap = Map<string, number>;
-    type EventMap = Map<string, BucketMap>;
-    type HubMap   = Map<string, EventMap>;
-    type DayMap   = Map<string, HubMap>;
+    type EventMap  = Map<string, BucketMap>;
+    type DayMap    = Map<string, EventMap>;
 
     const dayMap: DayMap = new Map();
 
     for (const row of rows) {
       const day = row.day.toISOString().slice(0, 10);
-      const hub = row.hub;
-      hubSet.add(hub);
-
-      if (!dayMap.has(day))         dayMap.set(day, new Map());
-      const hm = dayMap.get(day)!;
-      if (!hm.has(hub))             hm.set(hub, new Map());
-      const em = hm.get(hub)!;
-      if (!em.has(row.event_type))  em.set(row.event_type, new Map());
+      if (!dayMap.has(day))            dayMap.set(day, new Map());
+      const em = dayMap.get(day)!;
+      if (!em.has(row.event_type))     em.set(row.event_type, new Map());
       const bm = em.get(row.event_type)!;
       bm.set(row.bucket_time, (bm.get(row.bucket_time) ?? 0) + row.cnt);
     }
 
-    // ── Derive hub list from data ────────────────────────────────────────────
-    const hubs: HubEntry[] = Array.from(hubSet).sort().map(name => ({
-      id:   name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''),
-      name,
-      code: name.slice(0, 3).toUpperCase(),
-    }));
-
-    const hubIdByName = new Map(hubs.map(h => [h.name, h.id]));
-
-    // ── Build DayRecord[] ────────────────────────────────────────────────────
+    // ── Build DayRecord[] ─────────────────────────────────────────────────────
     const days: DayRecord[] = [];
 
-    for (const [dayStr, hubMap] of Array.from(dayMap.entries()).sort()) {
-      const totals = { inflow: 0, inTransit: 0, delivered: 0, failed: 0 };
-      const hubsRecord: Record<string, HubDayData> = {};
+    for (const [dayStr, evMap] of Array.from(dayMap.entries()).sort()) {
+      const ofdMap  = evMap.get('OUT_FOR_DELIVERY') ?? new Map<string, number>();
+      const delMap  = evMap.get('DELIVERED')        ?? new Map<string, number>();
 
-      for (const hub of hubs) {
-        const evMap = hubMap.get(hub.name) ?? new Map<string, BucketMap>();
-        const windows: Record<string, WindowData> = {};
+      const windows: Record<string, WindowData> = {};
 
-        for (const win of WINDOWS) {
-          const bucketTimes = bucketsFor(win);
-          const createdMap  = evMap.get('ORDER_CREATED')    ?? new Map<string, number>();
-          const deliveredMap= evMap.get('DELIVERED')        ?? new Map<string, number>();
-          const ofdMap      = evMap.get('OUT_FOR_DELIVERY') ?? new Map<string, number>();
-
-          const buckets = bucketTimes.map(t => ({ time: t, count: createdMap.get(t) ?? 0 }));
-          const total     = buckets.reduce((a, b) => a + b.count, 0);
-
-          // delivered / inTransit within this window's time range
-          let delivered = 0, inTransit = 0;
-          for (const t of bucketTimes) {
-            delivered  += deliveredMap.get(t) ?? 0;
-            inTransit  += ofdMap.get(t) ?? 0;
-          }
-          const failed = Math.max(0, total - delivered - inTransit);
-
-          windows[win.id] = { buckets, total, delivered, failed, inTransit };
+      for (const win of WINDOWS) {
+        const bucketTimes = bucketsFor(win);
+        const buckets = bucketTimes.map(t => ({
+          time: t,
+          count: ofdMap.get(t) ?? 0,  // inflow per bucket = OFD events
+        }));
+        const total     = buckets.reduce((a, b) => a + b.count, 0);
+        let delivered = 0, inTransit = 0;
+        for (const t of bucketTimes) {
+          delivered  += delMap.get(t) ?? 0;
+          inTransit  += ofdMap.get(t) ?? 0;
         }
+        inTransit = Math.max(0, inTransit - delivered);
+        const failed = 0; // no failed event type yet
 
-        // Totals from ALL events in the day — not restricted to window time ranges
-        const sum = (et: string) =>
-          Array.from(evMap.get(et)?.values() ?? []).reduce((a, b) => a + b, 0);
-        const inflow    = sum('ORDER_CREATED');
-        const delivered = sum('DELIVERED');
-        const inTransit = sum('OUT_FOR_DELIVERY');
-        const failed    = Math.max(0, inflow - delivered - inTransit);
-
-        hubsRecord[hub.id] = { windows, inflow, delivered, failed, inTransit };
-        totals.inflow    += inflow;
-        totals.delivered += delivered;
-        totals.failed    += failed;
-        totals.inTransit += inTransit;
+        windows[win.id] = { buckets, total, delivered, inTransit, failed };
       }
+
+      // Day-level totals for this hub
+      const sumMap = (m: Map<string, number>) =>
+        Array.from(m.values()).reduce((a, b) => a + b, 0);
+
+      const inflow    = sumMap(ofdMap);
+      const delivered = sumMap(delMap);
+      const inTransit = Math.max(0, inflow - delivered);
+      const failed    = 0;
+
+      const hubsRecord: Record<string, HubDayData> = {
+        [KENKO_HUB.id]: { windows, inflow, delivered, inTransit, failed },
+      };
+
+      const totals = { inflow, delivered, inTransit, failed };
 
       days.push({
         date: new Date(dayStr + 'T00:00:00+05:30'),
@@ -130,7 +118,7 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json({ days, hubs });
+    return NextResponse.json({ days, hubs: [KENKO_HUB] });
   } catch (err) {
     console.error('/api/orders error:', err);
     return NextResponse.json({ error: 'Failed to fetch order data' }, { status: 500 });
