@@ -308,7 +308,6 @@ interface DeliveredOrder {
 
 function DeliveredTable() {
   const [orders, setOrders] = useState<DeliveredOrder[]>([]);
-  const [podOpen, setPodOpen] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -331,69 +330,53 @@ function DeliveredTable() {
   );
 
   return (
-    <>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ borderBottom: "1px solid var(--line)" }}>
-            {["Order ID", "Proof of Delivery", "Delivered At (IST)"].map(h => (
-              <th key={h} style={{
-                padding: "10px 12px", textAlign: "left",
-                fontFamily: "var(--font-mono)", fontSize: 10,
-                letterSpacing: "0.14em", textTransform: "uppercase",
-                color: "var(--text-mute)", fontWeight: 500,
-              }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {orders.map((o, i) => (
-            <tr key={o.order_id} style={{
-              borderBottom: "1px solid var(--line)",
-              background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)",
-            }}>
-              <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text)" }}>
-                {o.order_id}
-              </td>
-              <td style={{ padding: "12px 12px" }}>
-                {o.pod ? (
-                  <button onClick={() => setPodOpen(o.pod!)} style={{
-                    background: "none", border: "none", padding: 0, cursor: "pointer",
-                  }}>
-                    <img src={o.pod} alt="POD" style={{
-                      width: 48, height: 48, objectFit: "cover",
-                      borderRadius: 6, border: "1px solid var(--line)",
-                      display: "block",
-                    }} />
-                  </button>
-                ) : (
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)" }}>—</span>
-                )}
-              </td>
-              <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text-dim)" }}>
-                {o.delivered_time}
-              </td>
-            </tr>
+    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <thead>
+        <tr style={{ borderBottom: "1px solid var(--line)" }}>
+          {["Order ID", "Proof of Delivery", "Delivered At (IST)"].map(h => (
+            <th key={h} style={{
+              padding: "10px 12px", textAlign: "left",
+              fontFamily: "var(--font-mono)", fontSize: 10,
+              letterSpacing: "0.14em", textTransform: "uppercase",
+              color: "var(--text-mute)", fontWeight: 500,
+            }}>{h}</th>
           ))}
-        </tbody>
-      </table>
-
-      {/* POD lightbox */}
-      {podOpen && (
-        <div
-          onClick={() => setPodOpen(null)}
-          style={{
-            position: "fixed", inset: 0, zIndex: 100,
-            background: "rgba(0,0,0,0.85)", display: "grid", placeItems: "center",
-          }}
-        >
-          <img src={podOpen} alt="Proof of delivery" style={{
-            maxWidth: "90vw", maxHeight: "90vh",
-            borderRadius: 12, border: "1px solid var(--line)",
-            boxShadow: "0 24px 60px rgba(0,0,0,0.7)",
-          }} />
-        </div>
-      )}
-    </>
+        </tr>
+      </thead>
+      <tbody>
+        {orders.map((o, i) => (
+          <tr key={o.order_id} style={{
+            borderBottom: "1px solid var(--line)",
+            background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)",
+          }}>
+            <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text)" }}>
+              {o.order_id}
+            </td>
+            <td style={{ padding: "12px 12px" }}>
+              {o.pod ? (
+                <a
+                  href={o.pod}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontFamily: "var(--font-mono)", fontSize: 12,
+                    color: "var(--accent)", textDecoration: "none",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  View POD ↗
+                </a>
+              ) : (
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)" }}>—</span>
+              )}
+            </td>
+            <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text-dim)" }}>
+              {o.delivered_time}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -969,7 +952,7 @@ export default function DashboardClient({ user }: { user: string }) {
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>Delivered orders</div>
               <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-mute)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 4 }}>
-                Today · Click POD thumbnail to enlarge
+                Today · Refreshes every 60s
               </div>
             </div>
             <DeliveredTable />
