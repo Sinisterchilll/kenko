@@ -22,7 +22,7 @@ function bucketsFor(win: { start: string; end: string }): string[] {
 type Row = {
   day: Date;
   event_type: string;
-  bucket_time: string | null;  // null = status-count row; non-null = ORDER_CREATED bucket row
+  bucket_time: string | null;
   cnt: number;
 };
 
@@ -30,20 +30,15 @@ export async function GET() {
   try {
     const pool = getPool();
 
-    // Two parts combined:
+    // Inflow   = ORDER_CREATED events (fixed — never changes as order moves through pipeline).
+    //            Bucketed into 30-min slots so the chart can show when orders were created.
     //
-    // Part 1 – ORDER_CREATED events bucketed into 30-min slots (inflow + chart bars).
+    // In Transit = distinct orders whose LATEST event is OUT_FOR_DELIVERY
+    //              (dispatched but not yet delivered).
     //
-    // Part 2 – For every order take the LATEST event in the window.
-    //           event_type = OUT_FOR_DELIVERY → order is currently in transit
-    //           event_type = DELIVERED        → order has been delivered
-    //           bucket_time is NULL so JS can tell them apart from Part 1 rows.
+    // Delivered  = distinct orders whose LATEST event is DELIVERED.
     //
-    // This means:
-    //   • Inflow   = sum of ORDER_CREATED events (fixed, never moves)
-    //   • In Transit = orders whose latest event is OUT_FOR_DELIVERY
-    //   • Delivered  = orders whose latest event is DELIVERED
-    //   When a delivered event fires, that order leaves In Transit and enters Delivered.
+    // As soon as a DELIVERED event fires, that order leaves In Transit and enters Delivered.
 
     const { rows } = await pool.query<Row>(`
       WITH base AS (
@@ -63,15 +58,14 @@ export async function GET() {
         WHERE hub_name = $1
           AND event_timestamp >= NOW() - INTERVAL '30 days'
       ),
-      -- Part 2: latest event per order
       latest AS (
-        SELECT order_id, event_type, event_timestamp, day_ist
+        SELECT order_id, event_type, day_ist
         FROM base
         WHERE rn = 1
           AND event_type IN ('OUT_FOR_DELIVERY', 'DELIVERED')
       )
 
-      -- Part 1: ORDER_CREATED bucketed (inflow chart)
+      -- Part 1: ORDER_CREATED events bucketed → inflow (bucket_time non-null)
       SELECT day_ist AS day, event_type, bucket_ist AS bucket_time, COUNT(*)::int AS cnt
       FROM base
       WHERE event_type = 'ORDER_CREATED'
@@ -79,7 +73,7 @@ export async function GET() {
 
       UNION ALL
 
-      -- Part 2: current status counts per day (null bucket_time = status row)
+      -- Part 2: latest status per order → in-transit / delivered (bucket_time null)
       SELECT day_ist AS day, event_type, NULL::text AS bucket_time, COUNT(*)::int AS cnt
       FROM latest
       GROUP BY 1, 2
@@ -87,7 +81,7 @@ export async function GET() {
       ORDER BY 1, 2, 3
     `, [KENKO_HUB_NAME]);
 
-    // ── Separate bucket rows (ORDER_CREATED) from status rows ─────────────────
+    // ── Split rows by type ─────────────────────────────────────────────────────
     const dayCreatedBuckets = new Map<string, Map<string, number>>();
     const dayStatus         = new Map<string, Map<string, number>>();
 
@@ -115,11 +109,10 @@ export async function GET() {
       const createdMap = dayCreatedBuckets.get(dayStr) ?? new Map<string, number>();
       const statusMap  = dayStatus.get(dayStr)         ?? new Map<string, number>();
 
-      // Day-level metrics
       const inflow    = Array.from(createdMap.values()).reduce((a, b) => a + b, 0);
       const inTransit = statusMap.get('OUT_FOR_DELIVERY') ?? 0;
       const delivered = statusMap.get('DELIVERED')        ?? 0;
-      const failed    = 0; // no failure event type yet
+      const failed    = 0;
 
       const windows: Record<string, WindowData> = {};
 
@@ -127,12 +120,9 @@ export async function GET() {
         const bucketTimes = bucketsFor(win);
         const buckets = bucketTimes.map(t => ({
           time: t,
-          count: createdMap.get(t) ?? 0,  // chart bars = ORDER_CREATED per 30-min bucket
+          count: createdMap.get(t) ?? 0,  // bars = ORDER_CREATED per 30-min bucket
         }));
         const winTotal = buckets.reduce((a, b) => a + b.count, 0);
-
-        // Delivered / inTransit for the window = day totals
-        // (only 1 slot so this equals the day total)
         windows[win.id] = { buckets, total: winTotal, delivered, inTransit, failed };
       }
 
