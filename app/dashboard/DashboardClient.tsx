@@ -100,7 +100,7 @@ function MetricTiles({ totals, prevTotals, showTransit, cols }: {
       dot: "#5C6960",
       big: num(totals.inflow),
       small: null,
-      sub: "Orders created",
+      sub: "Orders dispatched from hub",
       delta: delta(totals.inflow, prevTotals?.inflow),
     },
     ...(showTransit ? [{
@@ -665,7 +665,7 @@ const RANGES = [
 
 export default function DashboardClient({ user }: { user: string }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"summary" | "daily">("summary");
+  const [tab, setTab] = useState<"summary" | "daily">("daily");
   const [hub, setHub] = useState(LIVE_HUB_ID); // locked to Kenko HSR (live DB: WHERE hub_name = 'Kenko HSR')
   const [dateRange, setDateRange] = useState("14d");
   const [avatarOpen, setAvatarOpen] = useState(false);
@@ -829,7 +829,9 @@ export default function DashboardClient({ user }: { user: string }) {
         padding: "0 24px", borderBottom: "1px solid var(--line)",
       }}>
         <div style={{ display: "flex" }}>
-          {(["summary", "daily"] as const).map(t => (
+          {/* Summary tab disabled — only Today is live */}
+          {/* {(["summary", "daily"] as const).map(t => ( */}
+          {(["daily"] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -843,7 +845,7 @@ export default function DashboardClient({ user }: { user: string }) {
                 transition: "color 120ms",
               }}
             >
-              {t === "summary" ? "Summary" : "Today"}
+              Today
             </button>
           ))}
         </div>
@@ -876,7 +878,8 @@ export default function DashboardClient({ user }: { user: string }) {
           </Dropdown>
         </div>
 
-        {tab === "summary" && (
+        {/* Date range picker — Summary tab only (disabled) */}
+        {false && tab === "summary" && (
           <div onClick={e => e.stopPropagation()}>
             <Dropdown
               label={activeRange.label}
@@ -915,7 +918,7 @@ export default function DashboardClient({ user }: { user: string }) {
               Orders — 30-minute slots
             </div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-mute)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 4 }}>
-              Slot 1 · Slot 2
+              {WINDOWS.map(w => w.label).join(' · ')}
             </div>
           </div>
           <BucketChart windows={agg.windows} showTransit={tab === "daily"} />
