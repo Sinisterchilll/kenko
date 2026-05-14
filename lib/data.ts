@@ -26,8 +26,7 @@ export const LIVE_HUB_ID = "hsr";
 // }
 
 export const WINDOWS = [
-  { id: "slot1", label: "Slot 1", start: "11:30", end: "14:30" },  // Lunch window
-  { id: "slot2", label: "Slot 2", start: "17:30", end: "20:30" },  // Dinner window (live data: 17:55–20:40 IST)
+  { id: "slot1", label: "Slot 1", start: "16:00", end: "19:00" },  // 4 PM – 7 PM
 ] as const;
 
 export type HubId = (typeof HUBS)[number]["id"];

@@ -289,12 +289,111 @@ function BucketChart({ windows, showTransit }: { windows: AggResult["windows"]; 
           Hover for breakdown
         </span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${WINDOWS.length}, 1fr)`, gap: 24 }}>
         {WINDOWS.map(w => (
           <SlotChart key={w.id} win={w} winData={windows[w.id]} globalMax={globalMax} showTransit={showTransit} />
         ))}
       </div>
     </div>
+  );
+}
+
+// ─── Delivered Orders Table ───────────────────────────────────────────────────
+
+interface DeliveredOrder {
+  order_id: string;
+  pod: string | null;
+  delivered_time: string;
+}
+
+function DeliveredTable() {
+  const [orders, setOrders] = useState<DeliveredOrder[]>([]);
+  const [podOpen, setPodOpen] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch("/api/orders/delivered");
+        if (!res.ok) return;
+        const data = await res.json();
+        setOrders(data.orders ?? []);
+      } catch { /* silent */ }
+    }
+    load();
+    const t = setInterval(load, 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (!orders.length) return (
+    <div style={{ padding: "24px 0", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)", letterSpacing: "0.1em", textTransform: "uppercase", textAlign: "center" }}>
+      No delivered orders yet today
+    </div>
+  );
+
+  return (
+    <>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--line)" }}>
+            {["Order ID", "Proof of Delivery", "Delivered At (IST)"].map(h => (
+              <th key={h} style={{
+                padding: "10px 12px", textAlign: "left",
+                fontFamily: "var(--font-mono)", fontSize: 10,
+                letterSpacing: "0.14em", textTransform: "uppercase",
+                color: "var(--text-mute)", fontWeight: 500,
+              }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map((o, i) => (
+            <tr key={o.order_id} style={{
+              borderBottom: "1px solid var(--line)",
+              background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)",
+            }}>
+              <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text)" }}>
+                {o.order_id}
+              </td>
+              <td style={{ padding: "12px 12px" }}>
+                {o.pod ? (
+                  <button onClick={() => setPodOpen(o.pod!)} style={{
+                    background: "none", border: "none", padding: 0, cursor: "pointer",
+                  }}>
+                    <img src={o.pod} alt="POD" style={{
+                      width: 48, height: 48, objectFit: "cover",
+                      borderRadius: 6, border: "1px solid var(--line)",
+                      display: "block",
+                    }} />
+                  </button>
+                ) : (
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)" }}>—</span>
+                )}
+              </td>
+              <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text-dim)" }}>
+                {o.delivered_time}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* POD lightbox */}
+      {podOpen && (
+        <div
+          onClick={() => setPodOpen(null)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 100,
+            background: "rgba(0,0,0,0.85)", display: "grid", placeItems: "center",
+          }}
+        >
+          <img src={podOpen} alt="Proof of delivery" style={{
+            maxWidth: "90vw", maxHeight: "90vh",
+            borderRadius: 12, border: "1px solid var(--line)",
+            boxShadow: "0 24px 60px rgba(0,0,0,0.7)",
+          }} />
+        </div>
+      )}
+    </>
   );
 }
 
@@ -863,6 +962,19 @@ export default function DashboardClient({ user }: { user: string }) {
             </>
           )}
         </div>
+
+        {/* Delivered orders table — Today tab only */}
+        {tab === "daily" && (
+          <div style={{ background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>Delivered orders</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-mute)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 4 }}>
+                Today · Click POD thumbnail to enlarge
+              </div>
+            </div>
+            <DeliveredTable />
+          </div>
+        )}
 
         {/* Footer */}
         <div style={{
