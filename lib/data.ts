@@ -145,8 +145,6 @@ function genDay(date: Date, seedBase: number): DayRecord {
   return dayRecord;
 }
 
-export const DAYS: DayRecord[] = daysBack(14).map((d, i) => genDay(d, 9000 + i));
-
 export function bucketsForWindow(win: { start: string; end: string }): string[] {
   return bucketsFor(win);
 }
