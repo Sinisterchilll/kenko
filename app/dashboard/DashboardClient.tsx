@@ -100,7 +100,7 @@ function MetricTiles({ totals, prevTotals, showTransit, cols }: {
       dot: "#5C6960",
       big: num(totals.inflow),
       small: null,
-      sub: "Boxes received at hubs",
+      sub: "Orders created",
       delta: delta(totals.inflow, prevTotals?.inflow),
     },
     ...(showTransit ? [{
@@ -108,7 +108,7 @@ function MetricTiles({ totals, prevTotals, showTransit, cols }: {
       dot: "#7A8A82",
       big: pct(totals.inTransit, totals.inflow),
       small: num(totals.inTransit) + " orders",
-      sub: "Currently out for delivery",
+      sub: "Latest status: out for delivery",
       delta: null,
     }] : []),
     {
