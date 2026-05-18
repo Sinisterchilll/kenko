@@ -721,7 +721,8 @@ export default function DashboardClient({ user }: { user: string }) {
     return [];
   }, [dateRange, days]);
 
-  const activeDay  = days[days.length - 1];
+  const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
+  const activeDay  = days.find(d => d.date.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) === todayIST) ?? null;
   const summaryAgg = useMemo(() => aggregate(rangeDays, hub, hubs), [rangeDays, hub, hubs]);
   const prevAgg    = useMemo(() => aggregate(prevDays,  hub, hubs), [prevDays,  hub, hubs]);
   const dailyAgg   = useMemo(() => activeDay ? aggregate([activeDay], hub, hubs) : null, [activeDay, hub, hubs]);
