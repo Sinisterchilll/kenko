@@ -745,13 +745,8 @@ export default function DashboardClient({ user }: { user: string }) {
     </div>
   );
 
-  if (!agg) return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "grid", placeItems: "center" }}>
-      <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-mute)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
-        No data available yet
-      </div>
-    </div>
-  );
+  // If no data for today yet, show zeros rather than a blank screen
+  const displayAgg: AggResult = agg ?? aggregate([], hub, hubs);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", display: "flex", flexDirection: "column" }}>
@@ -906,7 +901,7 @@ export default function DashboardClient({ user }: { user: string }) {
 
         {/* Metric Tiles */}
         <MetricTiles
-          totals={agg.totals}
+          totals={displayAgg.totals}
           prevTotals={prev?.totals ?? null}
           showTransit={tab === "daily"}
           cols={tab === "daily" ? 4 : 3}
@@ -922,7 +917,7 @@ export default function DashboardClient({ user }: { user: string }) {
               {WINDOWS.map(w => w.label).join(' · ')}
             </div>
           </div>
-          <BucketChart windows={agg.windows} showTransit={tab === "daily"} />
+          <BucketChart windows={displayAgg.windows} showTransit={tab === "daily"} />
         </div>
 
         {/* Trend (Summary) / Delivery Timing (Today) */}
@@ -945,7 +940,7 @@ export default function DashboardClient({ user }: { user: string }) {
                   Cumulative % delivered within each hour of slot
                 </div>
               </div>
-              <DeliveryTimingChart windows={agg.windows} />
+              <DeliveryTimingChart windows={displayAgg.windows} />
             </>
           )}
         </div>
