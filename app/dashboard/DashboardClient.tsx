@@ -152,8 +152,8 @@ function SlotChart({ win, winData, globalMax, showTransit }: {
 }) {
   const [tooltip, setTooltip] = useState<SlotTooltip | null>(null);
 
-  const delRate = winData.total ? winData.delivered / winData.total : 0.9;
-  const trRate = winData.total ? winData.inTransit / winData.total : 0.05;
+  const delRate = winData.total ? Math.min(1, winData.delivered / winData.total) : 0;
+  const trRate  = winData.total ? Math.min(1 - delRate, winData.inTransit / winData.total) : 0;
 
   const buckets = winData.buckets.map((b, i) => ({
     slot: i + 1,
