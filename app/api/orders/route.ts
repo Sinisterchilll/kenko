@@ -30,15 +30,14 @@ export async function GET() {
   try {
     const pool = getPool();
 
-    // Inflow   = ORDER_CREATED events (fixed — never changes as order moves through pipeline).
-    //            Bucketed into 30-min slots so the chart can show when orders were created.
+    // Inflow   = ORDER_CREATED events per day (no bucket — day-level total only).
     //
-    // In Transit = distinct orders whose LATEST event is OUT_FOR_DELIVERY
-    //              (dispatched but not yet delivered).
+    // Chart bars = OUT_FOR_DELIVERY events bucketed into 30-min slots.
+    //              These happen ~4:26 PM IST, inside the 16:00–19:00 window.
+    //
+    // In Transit = distinct orders whose LATEST event is OUT_FOR_DELIVERY.
     //
     // Delivered  = distinct orders whose LATEST event is DELIVERED.
-    //
-    // As soon as a DELIVERED event fires, that order leaves In Transit and enters Delivered.
 
     const { rows } = await pool.query<Row>(`
       WITH base AS (
@@ -60,20 +59,24 @@ export async function GET() {
       ),
       latest AS (
         SELECT order_id, event_type, day_ist
-        FROM base
-        WHERE rn = 1
-          AND event_type IN ('OUT_FOR_DELIVERY', 'DELIVERED')
+        FROM base WHERE rn = 1 AND event_type IN ('OUT_FOR_DELIVERY', 'DELIVERED')
       )
 
-      -- Part 1: ORDER_CREATED events bucketed → inflow (bucket_time non-null)
-      SELECT day_ist AS day, event_type, bucket_ist AS bucket_time, COUNT(*)::int AS cnt
-      FROM base
-      WHERE event_type = 'ORDER_CREATED'
+      -- Part 1: ORDER_CREATED total per day (inflow, no bucket)
+      SELECT day_ist AS day, 'ORDER_CREATED' AS event_type, NULL::text AS bucket_time, COUNT(*)::int AS cnt
+      FROM base WHERE event_type = 'ORDER_CREATED'
+      GROUP BY 1, 2
+
+      UNION ALL
+
+      -- Part 2: OUT_FOR_DELIVERY bucketed (chart bars, has bucket_time)
+      SELECT day_ist AS day, 'OUT_FOR_DELIVERY' AS event_type, bucket_ist AS bucket_time, COUNT(*)::int AS cnt
+      FROM base WHERE event_type = 'OUT_FOR_DELIVERY'
       GROUP BY 1, 2, 3
 
       UNION ALL
 
-      -- Part 2: latest status per order → in-transit / delivered (bucket_time null)
+      -- Part 3: latest status per order (in-transit / delivered counts, no bucket)
       SELECT day_ist AS day, event_type, NULL::text AS bucket_time, COUNT(*)::int AS cnt
       FROM latest
       GROUP BY 1, 2
@@ -82,36 +85,45 @@ export async function GET() {
     `, [KENKO_HUB_NAME]);
 
     // ── Split rows by type ─────────────────────────────────────────────────────
-    const dayCreatedBuckets = new Map<string, Map<string, number>>();
-    const dayStatus         = new Map<string, Map<string, number>>();
+    const inflowMap     = new Map<string, number>();              // ORDER_CREATED day total
+    const ofdBucketMap  = new Map<string, Map<string, number>>(); // OFD bucketed for chart
+    const inTransitMap  = new Map<string, number>();              // latest status OFD
+    const deliveredMap  = new Map<string, number>();              // latest status DELIVERED
 
     for (const row of rows) {
       const day = row.day.toISOString().slice(0, 10);
 
-      if (row.bucket_time !== null) {
-        // ORDER_CREATED bucket row
-        if (!dayCreatedBuckets.has(day)) dayCreatedBuckets.set(day, new Map());
-        const bm = dayCreatedBuckets.get(day)!;
+      if (row.event_type === 'ORDER_CREATED') {
+        // Part 1: inflow total
+        inflowMap.set(day, (inflowMap.get(day) ?? 0) + row.cnt);
+      } else if (row.event_type === 'OUT_FOR_DELIVERY' && row.bucket_time !== null) {
+        // Part 2: OFD bucketed for chart bars
+        if (!ofdBucketMap.has(day)) ofdBucketMap.set(day, new Map());
+        const bm = ofdBucketMap.get(day)!;
         bm.set(row.bucket_time, (bm.get(row.bucket_time) ?? 0) + row.cnt);
-      } else {
-        // Latest-event status row
-        if (!dayStatus.has(day)) dayStatus.set(day, new Map());
-        const sm = dayStatus.get(day)!;
-        sm.set(row.event_type, (sm.get(row.event_type) ?? 0) + row.cnt);
+      } else if (row.event_type === 'OUT_FOR_DELIVERY' && row.bucket_time === null) {
+        // Part 3: in-transit count from latest status
+        inTransitMap.set(day, (inTransitMap.get(day) ?? 0) + row.cnt);
+      } else if (row.event_type === 'DELIVERED' && row.bucket_time === null) {
+        // Part 3: delivered count from latest status
+        deliveredMap.set(day, (deliveredMap.get(day) ?? 0) + row.cnt);
       }
     }
 
     // ── Build DayRecord[] ─────────────────────────────────────────────────────
-    const allDays = new Set([...dayCreatedBuckets.keys(), ...dayStatus.keys()]);
+    const allDays = new Set([
+      ...inflowMap.keys(),
+      ...ofdBucketMap.keys(),
+      ...inTransitMap.keys(),
+      ...deliveredMap.keys(),
+    ]);
     const days: DayRecord[] = [];
 
     for (const dayStr of Array.from(allDays).sort()) {
-      const createdMap = dayCreatedBuckets.get(dayStr) ?? new Map<string, number>();
-      const statusMap  = dayStatus.get(dayStr)         ?? new Map<string, number>();
-
-      const inflow    = Array.from(createdMap.values()).reduce((a, b) => a + b, 0);
-      const inTransit = statusMap.get('OUT_FOR_DELIVERY') ?? 0;
-      const delivered = statusMap.get('DELIVERED')        ?? 0;
+      const ofdMap    = ofdBucketMap.get(dayStr) ?? new Map<string, number>();
+      const inflow    = inflowMap.get(dayStr)    ?? 0;
+      const inTransit = inTransitMap.get(dayStr) ?? 0;
+      const delivered = deliveredMap.get(dayStr) ?? 0;
       const failed    = 0;
 
       const windows: Record<string, WindowData> = {};
@@ -120,7 +132,7 @@ export async function GET() {
         const bucketTimes = bucketsFor(win);
         const buckets = bucketTimes.map(t => ({
           time: t,
-          count: createdMap.get(t) ?? 0,  // bars = ORDER_CREATED per 30-min bucket
+          count: ofdMap.get(t) ?? 0,  // chart bars = OUT_FOR_DELIVERY per 30-min bucket
         }));
         const winTotal = buckets.reduce((a, b) => a + b.count, 0);
         windows[win.id] = { buckets, total: winTotal, delivered, inTransit, failed };

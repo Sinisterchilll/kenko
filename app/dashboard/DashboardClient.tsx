@@ -298,21 +298,50 @@ function BucketChart({ windows, showTransit }: { windows: AggResult["windows"]; 
   );
 }
 
-// ─── Delivered Orders Table ───────────────────────────────────────────────────
+// ─── Orders Table (all stages) ────────────────────────────────────────────────
 
-interface DeliveredOrder {
+interface LiveOrder {
   order_id: string;
+  current_stage: string;
+  last_update: string;
+  rider_phone_number: string | null;
   pod: string | null;
-  delivered_time: string;
+  created_time: string | null;
 }
 
-function DeliveredTable() {
-  const [orders, setOrders] = useState<DeliveredOrder[]>([]);
+const STAGE_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+  ORDER_CREATED:    { bg: "#2A2A2A",  color: "#888",    label: "Created" },
+  ORDER_ASSIGNED:   { bg: "#1A3340",  color: "#4A90A4", label: "Assigned" },
+  OUT_FOR_DELIVERY: { bg: "#D4FF3A",  color: "#0D1210", label: "Out for Delivery" },
+  DELIVERED:        { bg: "#FFFFFF",  color: "#0D1210", label: "Delivered" },
+};
+
+function StageBadge({ stage }: { stage: string }) {
+  const badge = STAGE_BADGE[stage] ?? { bg: "#2A2A2A", color: "#888", label: stage };
+  return (
+    <span style={{
+      background: badge.bg,
+      color: badge.color,
+      borderRadius: 20,
+      padding: "3px 10px",
+      fontSize: 11,
+      fontWeight: 600,
+      fontFamily: "var(--font-mono)",
+      letterSpacing: "0.04em",
+      display: "inline-block",
+    }}>
+      {badge.label}
+    </span>
+  );
+}
+
+function OrdersTable({ date }: { date: string }) {
+  const [orders, setOrders] = useState<LiveOrder[]>([]);
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch("/api/orders/delivered");
+        const res = await fetch(`/api/orders/all?date=${date}`);
         if (!res.ok) return;
         const data = await res.json();
         setOrders(data.orders ?? []);
@@ -321,11 +350,11 @@ function DeliveredTable() {
     load();
     const t = setInterval(load, 60_000);
     return () => clearInterval(t);
-  }, []);
+  }, [date]);
 
   if (!orders.length) return (
     <div style={{ padding: "24px 0", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)", letterSpacing: "0.1em", textTransform: "uppercase", textAlign: "center" }}>
-      No delivered orders yet today
+      No orders found for this date
     </div>
   );
 
@@ -333,7 +362,7 @@ function DeliveredTable() {
     <table style={{ width: "100%", borderCollapse: "collapse" }}>
       <thead>
         <tr style={{ borderBottom: "1px solid var(--line)" }}>
-          {["Order ID", "Proof of Delivery", "Delivered At (IST)"].map(h => (
+          {["Order ID", "Stage", "Rider", "Last Updated", "POD"].map(h => (
             <th key={h} style={{
               padding: "10px 12px", textAlign: "left",
               fontFamily: "var(--font-mono)", fontSize: 10,
@@ -344,37 +373,57 @@ function DeliveredTable() {
         </tr>
       </thead>
       <tbody>
-        {orders.map((o, i) => (
-          <tr key={o.order_id} style={{
-            borderBottom: "1px solid var(--line)",
-            background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)",
-          }}>
-            <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text)" }}>
-              {o.order_id}
-            </td>
-            <td style={{ padding: "12px 12px" }}>
-              {o.pod ? (
-                <a
-                  href={o.pod}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    fontFamily: "var(--font-mono)", fontSize: 12,
-                    color: "var(--accent)", textDecoration: "none",
-                    letterSpacing: "0.06em",
-                  }}
-                >
-                  View POD ↗
-                </a>
-              ) : (
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)" }}>—</span>
-              )}
-            </td>
-            <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text-dim)" }}>
-              {o.delivered_time}
-            </td>
-          </tr>
-        ))}
+        {orders.map((o, i) => {
+          const phone = o.rider_phone_number
+            ? o.rider_phone_number.replace(/^\+91/, "")
+            : null;
+          return (
+            <tr key={o.order_id} style={{
+              borderBottom: "1px solid var(--line)",
+              background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)",
+            }}>
+              <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text)" }}>
+                {o.order_id}
+              </td>
+              <td style={{ padding: "12px 12px" }}>
+                <StageBadge stage={o.current_stage} />
+              </td>
+              <td style={{ padding: "12px 12px" }}>
+                {phone ? (
+                  <a
+                    href={`tel:${o.rider_phone_number}`}
+                    style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text)", textDecoration: "none" }}
+                  >
+                    {phone}
+                  </a>
+                ) : (
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)" }}>—</span>
+                )}
+              </td>
+              <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text-dim)" }}>
+                {o.last_update}
+              </td>
+              <td style={{ padding: "12px 12px" }}>
+                {o.pod && o.current_stage === "DELIVERED" ? (
+                  <a
+                    href={o.pod}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontFamily: "var(--font-mono)", fontSize: 12,
+                      color: "var(--accent)", textDecoration: "none",
+                      letterSpacing: "0.06em",
+                    }}
+                  >
+                    View ↗
+                  </a>
+                ) : (
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)" }}>—</span>
+                )}
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -722,7 +771,8 @@ export default function DashboardClient({ user }: { user: string }) {
   }, [dateRange, days]);
 
   const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
-  const activeDay  = days.find(d => d.date.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) === todayIST) ?? null;
+  const [selectedDate, setSelectedDate] = useState<string>(todayIST);
+  const activeDay  = days.find(d => d.date.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) === selectedDate) ?? null;
   const summaryAgg = useMemo(() => aggregate(rangeDays, hub, hubs), [rangeDays, hub, hubs]);
   const prevAgg    = useMemo(() => aggregate(prevDays,  hub, hubs), [prevDays,  hub, hubs]);
   const dailyAgg   = useMemo(() => activeDay ? aggregate([activeDay], hub, hubs) : null, [activeDay, hub, hubs]);
@@ -874,6 +924,22 @@ export default function DashboardClient({ user }: { user: string }) {
           </Dropdown>
         </div>
 
+        {/* Date picker */}
+        <div onClick={e => e.stopPropagation()}>
+          <input
+            type="date"
+            value={selectedDate}
+            max={todayIST}
+            onChange={e => setSelectedDate(e.target.value)}
+            style={{
+              background: "var(--bg-1)", border: "1px solid var(--line)",
+              borderRadius: 8, padding: "8px 12px", fontSize: 13,
+              color: "var(--text)", fontFamily: "var(--font-mono)",
+              cursor: "pointer", outline: "none",
+            }}
+          />
+        </div>
+
         {/* Date range picker — Summary tab only (disabled) */}
         {false && tab === "summary" && (
           <div onClick={e => e.stopPropagation()}>
@@ -945,16 +1011,16 @@ export default function DashboardClient({ user }: { user: string }) {
           )}
         </div>
 
-        {/* Delivered orders table — Today tab only */}
+        {/* All orders table — Today tab only */}
         {tab === "daily" && (
           <div style={{ background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>Delivered orders</div>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>All orders</div>
               <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-mute)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 4 }}>
-                Today · Refreshes every 60s
+                Orders across all stages · Refreshes every 60s
               </div>
             </div>
-            <DeliveredTable />
+            <OrdersTable date={selectedDate} />
           </div>
         )}
 
