@@ -706,17 +706,21 @@ function DropItem({ label, sub, active, onClick }: { label: string; sub?: string
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 const RANGES = [
-  { id: "today", label: "Today" },
-  { id: "7d", label: "Last 7 days" },
-  { id: "14d", label: "Last 14 days" },
-  { id: "mtd", label: "Month to date" },
+  { id: "today",     label: "Today" },
+  { id: "yesterday", label: "Yesterday" },
+  { id: "7d",        label: "Last 7 days" },
+  { id: "14d",       label: "Last 14 days" },
+  { id: "mtd",       label: "Month to date" },
 ];
 
 export default function DashboardClient({ user }: { user: string }) {
   const router = useRouter();
+  const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
   const [tab, setTab] = useState<"summary" | "daily">("daily");
-  const [hub, setHub] = useState(LIVE_HUB_ID); // locked to Kenko HSR (live DB: WHERE hub_name = 'Kenko HSR')
-  const [dateRange, setDateRange] = useState("14d");
+  const [hub, setHub] = useState(LIVE_HUB_ID);
+  const [dateRange, setDateRange] = useState("today");
+  const [tableDate, setTableDate] = useState<string>(todayIST);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [hubOpen, setHubOpen] = useState(false);
   const [rangeOpen, setRangeOpen] = useState(false);
@@ -758,28 +762,31 @@ export default function DashboardClient({ user }: { user: string }) {
 
   const rangeDays = useMemo<DayRecord[]>(() => {
     const now = new Date();
-    if (dateRange === "today") return days.slice(-1);
-    if (dateRange === "7d")    return days.slice(-7);
-    if (dateRange === "mtd")   return days.filter(d => d.date.getMonth() === now.getMonth() && d.date.getFullYear() === now.getFullYear());
+    const dayStr = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    if (dateRange === "today") {
+      return days.filter(d => dayStr(d.date) === todayIST);
+    }
+    if (dateRange === "yesterday") {
+      const yest = new Date(); yest.setDate(yest.getDate() - 1);
+      const y = yest.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      return days.filter(d => dayStr(d.date) === y);
+    }
+    if (dateRange === "7d")  return days.slice(-7);
+    if (dateRange === "14d") return days.slice(-14);
+    if (dateRange === "mtd") return days.filter(d => d.date.getMonth() === now.getMonth() && d.date.getFullYear() === now.getFullYear());
     return days;
-  }, [dateRange, days]);
+  }, [dateRange, days, todayIST]);
 
-  const prevDays = useMemo<DayRecord[]>(() => {
-    if (dateRange === "today") return days.slice(-2, -1);
-    if (dateRange === "7d")    return days.slice(-14, -7);
-    return [];
-  }, [dateRange, days]);
+  const activeRange = RANGES.find(r => r.id === dateRange) ?? RANGES[0];
+  const agg = useMemo(() => aggregate(rangeDays, hub, hubs), [rangeDays, hub, hubs]);
 
-  const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
-  const [selectedDate, setSelectedDate] = useState<string>(todayIST);
-  const activeDay  = days.find(d => d.date.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) === selectedDate) ?? null;
-  const summaryAgg = useMemo(() => aggregate(rangeDays, hub, hubs), [rangeDays, hub, hubs]);
-  const prevAgg    = useMemo(() => aggregate(prevDays,  hub, hubs), [prevDays,  hub, hubs]);
-  const dailyAgg   = useMemo(() => activeDay ? aggregate([activeDay], hub, hubs) : null, [activeDay, hub, hubs]);
-
-  const agg: AggResult | null = tab === "summary" ? summaryAgg : dailyAgg;
-  const prev: AggResult | null = tab === "summary" && prevDays.length ? prevAgg : null;
-  const activeRange = RANGES.find(r => r.id === dateRange) ?? RANGES[2];
+  // Table date navigation helpers
+  function shiftTableDate(delta: number) {
+    const d = new Date(tableDate + 'T00:00:00');
+    d.setDate(d.getDate() + delta);
+    const s = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    if (s <= todayIST) setTableDate(s);
+  }
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -795,8 +802,7 @@ export default function DashboardClient({ user }: { user: string }) {
     </div>
   );
 
-  // If no data for today yet, show zeros rather than a blank screen
-  const displayAgg: AggResult = agg ?? aggregate([], hub, hubs);
+  const displayAgg: AggResult = agg;
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", display: "flex", flexDirection: "column" }}>
@@ -924,37 +930,19 @@ export default function DashboardClient({ user }: { user: string }) {
           </Dropdown>
         </div>
 
-        {/* Date picker */}
+        {/* Date range picker */}
         <div onClick={e => e.stopPropagation()}>
-          <input
-            type="date"
-            value={selectedDate}
-            max={todayIST}
-            onChange={e => setSelectedDate(e.target.value)}
-            style={{
-              background: "var(--bg-1)", border: "1px solid var(--line)",
-              borderRadius: 8, padding: "8px 12px", fontSize: 13,
-              color: "var(--text)", fontFamily: "var(--font-mono)",
-              cursor: "pointer", outline: "none",
-            }}
-          />
+          <Dropdown
+            label={activeRange.label}
+            icon={<CalIcon />}
+            open={rangeOpen}
+            onToggle={() => { setRangeOpen(v => !v); setHubOpen(false); }}
+          >
+            {RANGES.map(r => (
+              <DropItem key={r.id} label={r.label} active={dateRange === r.id} onClick={() => { setDateRange(r.id); setRangeOpen(false); }} />
+            ))}
+          </Dropdown>
         </div>
-
-        {/* Date range picker — Summary tab only (disabled) */}
-        {false && tab === "summary" && (
-          <div onClick={e => e.stopPropagation()}>
-            <Dropdown
-              label={activeRange.label}
-              icon={<CalIcon />}
-              open={rangeOpen}
-              onToggle={() => { setRangeOpen(v => !v); setHubOpen(false); }}
-            >
-              {RANGES.map(r => (
-                <DropItem key={r.id} label={r.label} active={dateRange === r.id} onClick={() => { setDateRange(r.id); setRangeOpen(false); }} />
-              ))}
-            </Dropdown>
-          </div>
-        )}
 
         <div style={{ flex: 1 }} />
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)", letterSpacing: "0.08em" }}>
@@ -968,9 +956,9 @@ export default function DashboardClient({ user }: { user: string }) {
         {/* Metric Tiles */}
         <MetricTiles
           totals={displayAgg.totals}
-          prevTotals={prev?.totals ?? null}
-          showTransit={tab === "daily"}
-          cols={tab === "daily" ? 4 : 3}
+          prevTotals={null}
+          showTransit={true}
+          cols={4}
         />
 
         {/* Bucket Chart */}
@@ -1011,18 +999,33 @@ export default function DashboardClient({ user }: { user: string }) {
           )}
         </div>
 
-        {/* All orders table — Today tab only */}
-        {tab === "daily" && (
-          <div style={{ background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>All orders</div>
+        {/* Orders table with date navigator */}
+        <div style={{ background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
+          <div style={{ marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>Orders</div>
               <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-mute)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 4 }}>
-                Orders across all stages · Refreshes every 60s
+                All stages · Refreshes every 60s
               </div>
             </div>
-            <OrdersTable date={selectedDate} />
+            {/* Date navigator */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button onClick={() => shiftTableDate(-1)} style={{
+                background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6,
+                color: "var(--text)", padding: "6px 10px", cursor: "pointer", fontSize: 14, lineHeight: 1,
+              }}>←</button>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text)", minWidth: 90, textAlign: "center" }}>
+                {tableDate === todayIST ? "Today" : tableDate}
+              </span>
+              <button onClick={() => shiftTableDate(1)} disabled={tableDate >= todayIST} style={{
+                background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 6,
+                color: tableDate >= todayIST ? "var(--text-mute)" : "var(--text)",
+                padding: "6px 10px", cursor: tableDate >= todayIST ? "default" : "pointer", fontSize: 14, lineHeight: 1,
+              }}>→</button>
+            </div>
           </div>
-        )}
+          <OrdersTable date={tableDate} />
+        </div>
 
         {/* Footer */}
         <div style={{
