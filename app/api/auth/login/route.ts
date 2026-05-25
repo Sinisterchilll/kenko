@@ -1,11 +1,13 @@
-const DEMO_EMAIL = "demo@kenko.com";
-const DEMO_PASSWORD = "kenko2024";
+const CREDENTIALS: Record<string, string> = {
+  "demo@kenko.com":         "kenko2024",
+  "kenko@bouncetask.com":   "kenko@123",
+};
 
 export async function POST(request: Request) {
   const body = await request.json();
   const { email, password } = body as { email: string; password: string };
 
-  if (email !== DEMO_EMAIL || password !== DEMO_PASSWORD) {
+  if (CREDENTIALS[email] !== password) {
     return Response.json({ error: "Invalid email or password." }, { status: 401 });
   }
 

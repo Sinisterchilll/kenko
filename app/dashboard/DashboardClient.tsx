@@ -309,6 +309,12 @@ interface LiveOrder {
   created_time: string | null;
 }
 
+interface JourneyEvent {
+  event_type: string;
+  time_ist: string;
+  rider_phone_number: string | null;
+}
+
 const STAGE_BADGE: Record<string, { bg: string; color: string; label: string }> = {
   ORDER_CREATED:    { bg: "#2A2A2A",  color: "#888",    label: "Created" },
   ORDER_ASSIGNED:   { bg: "#1A3340",  color: "#4A90A4", label: "Assigned" },
@@ -316,18 +322,21 @@ const STAGE_BADGE: Record<string, { bg: string; color: string; label: string }> 
   DELIVERED:        { bg: "#FFFFFF",  color: "#0D1210", label: "Delivered" },
 };
 
+const STAGE_ICON: Record<string, string> = {
+  ORDER_CREATED:    "○",
+  ORDER_ASSIGNED:   "◎",
+  OUT_FOR_DELIVERY: "◉",
+  DELIVERED:        "●",
+};
+
 function StageBadge({ stage }: { stage: string }) {
   const badge = STAGE_BADGE[stage] ?? { bg: "#2A2A2A", color: "#888", label: stage };
   return (
     <span style={{
-      background: badge.bg,
-      color: badge.color,
-      borderRadius: 20,
-      padding: "3px 10px",
-      fontSize: 11,
-      fontWeight: 600,
-      fontFamily: "var(--font-mono)",
-      letterSpacing: "0.04em",
+      background: badge.bg, color: badge.color,
+      borderRadius: 20, padding: "3px 10px",
+      fontSize: 11, fontWeight: 600,
+      fontFamily: "var(--font-mono)", letterSpacing: "0.04em",
       display: "inline-block",
     }}>
       {badge.label}
@@ -335,8 +344,99 @@ function StageBadge({ stage }: { stage: string }) {
   );
 }
 
+// ─── Journey Modal ─────────────────────────────────────────────────────────────
+
+function JourneyModal({ orderId, onClose }: { orderId: string; onClose: () => void }) {
+  const [events, setEvents] = useState<JourneyEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`/api/orders/journey?order_id=${encodeURIComponent(orderId)}`)
+      .then(r => r.json())
+      .then(d => { setEvents(d.events ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [orderId]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100,
+        background: "rgba(0,0,0,0.7)", display: "flex",
+        alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#0F1210", border: "1px solid #1E2420",
+          borderRadius: 16, padding: "28px 32px",
+          minWidth: 380, maxWidth: 480,
+          boxShadow: "0 24px 60px rgba(0,0,0,0.7)",
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+          <div>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 600, letterSpacing: "-0.01em" }}>
+              Order Journey
+            </div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#5C6960", letterSpacing: "0.1em", marginTop: 4 }}>
+              {orderId}
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            background: "none", border: "none", color: "#5C6960",
+            fontSize: 20, cursor: "pointer", lineHeight: 1, padding: "0 4px",
+          }}>×</button>
+        </div>
+
+        {/* Timeline */}
+        {loading ? (
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#5C6960", textAlign: "center", padding: "16px 0" }}>
+            Loading…
+          </div>
+        ) : events.length === 0 ? (
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#5C6960", textAlign: "center", padding: "16px 0" }}>
+            No events found
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            {events.map((ev, i) => {
+              const badge = STAGE_BADGE[ev.event_type] ?? { bg: "#2A2A2A", color: "#888", label: ev.event_type };
+              const icon = STAGE_ICON[ev.event_type] ?? "·";
+              const isLast = i === events.length - 1;
+              return (
+                <div key={i} style={{ display: "flex", gap: 16, position: "relative" }}>
+                  {/* Line + dot */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 20, flexShrink: 0 }}>
+                    <span style={{ fontSize: 16, color: badge.bg === "#FFFFFF" ? "#fff" : badge.bg === "#D4FF3A" ? "#D4FF3A" : badge.color, lineHeight: 1, marginTop: 2 }}>
+                      {icon}
+                    </span>
+                    {!isLast && <div style={{ width: 1, flex: 1, background: "#1E2420", margin: "4px 0" }} />}
+                  </div>
+                  {/* Content */}
+                  <div style={{ paddingBottom: isLast ? 0 : 20 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "#fff", marginBottom: 4 }}>
+                      {badge.label}
+                    </div>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#5C6960" }}>
+                      {ev.time_ist}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function OrdersTable({ date }: { date: string }) {
   const [orders, setOrders] = useState<LiveOrder[]>([]);
+  const [journeyOrder, setJourneyOrder] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -359,73 +459,86 @@ function OrdersTable({ date }: { date: string }) {
   );
 
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-      <thead>
-        <tr style={{ borderBottom: "1px solid var(--line)" }}>
-          {["Order ID", "Stage", "Rider", "Last Updated", "POD"].map(h => (
-            <th key={h} style={{
-              padding: "10px 12px", textAlign: "left",
-              fontFamily: "var(--font-mono)", fontSize: 10,
-              letterSpacing: "0.14em", textTransform: "uppercase",
-              color: "var(--text-mute)", fontWeight: 500,
-            }}>{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {orders.map((o, i) => {
-          const phone = o.rider_phone_number
-            ? o.rider_phone_number.replace(/^\+91/, "")
-            : null;
-          return (
-            <tr key={o.order_id} style={{
-              borderBottom: "1px solid var(--line)",
-              background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)",
-            }}>
-              <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text)" }}>
-                {o.order_id}
-              </td>
-              <td style={{ padding: "12px 12px" }}>
-                <StageBadge stage={o.current_stage} />
-              </td>
-              <td style={{ padding: "12px 12px" }}>
-                {phone ? (
-                  <a
-                    href={`tel:${o.rider_phone_number}`}
-                    style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text)", textDecoration: "none" }}
-                  >
-                    {phone}
-                  </a>
-                ) : (
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)" }}>—</span>
-                )}
-              </td>
-              <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text-dim)" }}>
-                {o.last_update}
-              </td>
-              <td style={{ padding: "12px 12px" }}>
-                {o.pod && o.current_stage === "DELIVERED" ? (
-                  <a
-                    href={o.pod}
-                    target="_blank"
-                    rel="noopener noreferrer"
+    <>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--line)" }}>
+            {["Order ID", "Stage", "Rider", "Last Updated", "POD", "Journey"].map(h => (
+              <th key={h} style={{
+                padding: "10px 12px", textAlign: "left",
+                fontFamily: "var(--font-mono)", fontSize: 10,
+                letterSpacing: "0.14em", textTransform: "uppercase",
+                color: "var(--text-mute)", fontWeight: 500,
+              }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map((o, i) => {
+            const phone = o.rider_phone_number
+              ? o.rider_phone_number.replace(/^\+91/, "")
+              : null;
+            return (
+              <tr key={o.order_id} style={{
+                borderBottom: "1px solid var(--line)",
+                background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)",
+              }}>
+                <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text)" }}>
+                  {o.order_id}
+                </td>
+                <td style={{ padding: "12px 12px" }}>
+                  <StageBadge stage={o.current_stage} />
+                </td>
+                <td style={{ padding: "12px 12px" }}>
+                  {phone ? (
+                    <a href={`tel:${o.rider_phone_number}`}
+                      style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text)", textDecoration: "none" }}>
+                      {phone}
+                    </a>
+                  ) : (
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)" }}>—</span>
+                  )}
+                </td>
+                <td style={{ padding: "12px 12px", fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--text-dim)" }}>
+                  {o.last_update}
+                </td>
+                <td style={{ padding: "12px 12px" }}>
+                  {o.pod && o.current_stage === "DELIVERED" ? (
+                    <a href={o.pod} target="_blank" rel="noopener noreferrer"
+                      style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent)", textDecoration: "none", letterSpacing: "0.06em" }}>
+                      View ↗
+                    </a>
+                  ) : (
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)" }}>—</span>
+                  )}
+                </td>
+                <td style={{ padding: "12px 12px" }}>
+                  <button
+                    onClick={() => setJourneyOrder(o.order_id)}
                     style={{
-                      fontFamily: "var(--font-mono)", fontSize: 12,
-                      color: "var(--accent)", textDecoration: "none",
+                      fontFamily: "var(--font-mono)", fontSize: 11,
+                      color: "#5C6960", background: "none",
+                      border: "1px solid #1E2420", borderRadius: 6,
+                      padding: "4px 10px", cursor: "pointer",
                       letterSpacing: "0.06em",
+                      transition: "color 120ms, border-color 120ms",
                     }}
+                    onMouseEnter={e => { (e.target as HTMLButtonElement).style.color = "#fff"; (e.target as HTMLButtonElement).style.borderColor = "#3A4540"; }}
+                    onMouseLeave={e => { (e.target as HTMLButtonElement).style.color = "#5C6960"; (e.target as HTMLButtonElement).style.borderColor = "#1E2420"; }}
                   >
                     View ↗
-                  </a>
-                ) : (
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-mute)" }}>—</span>
-                )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {journeyOrder && (
+        <JourneyModal orderId={journeyOrder} onClose={() => setJourneyOrder(null)} />
+      )}
+    </>
   );
 }
 
