@@ -62,8 +62,9 @@ export async function GET() {
         FROM base WHERE rn = 1 AND event_type IN ('OUT_FOR_DELIVERY', 'DELIVERED')
       )
 
-      -- Part 1: ORDER_CREATED total per day (inflow, no bucket)
-      SELECT day_ist AS day, 'ORDER_CREATED' AS event_type, NULL::text AS bucket_time, COUNT(*)::int AS cnt
+      -- Part 1: ORDER_CREATED distinct orders per day (inflow, no bucket)
+      -- Use COUNT(DISTINCT order_id) because the source system sends duplicate ORDER_CREATED events
+      SELECT day_ist AS day, 'ORDER_CREATED' AS event_type, NULL::text AS bucket_time, COUNT(DISTINCT order_id)::int AS cnt
       FROM base WHERE event_type = 'ORDER_CREATED'
       GROUP BY 1, 2
 

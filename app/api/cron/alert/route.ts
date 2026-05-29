@@ -33,8 +33,8 @@ export async function GET(request: Request) {
           AND DATE(event_timestamp AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
       )
 
-      -- Inflow: ORDER_CREATED today
-      SELECT 'inflow' AS type, COUNT(*)::int AS cnt
+      -- Inflow: distinct orders with ORDER_CREATED today (source sends duplicate events)
+      SELECT 'inflow' AS type, COUNT(DISTINCT order_id)::int AS cnt
       FROM today_events
       WHERE event_type = 'ORDER_CREATED'
 
