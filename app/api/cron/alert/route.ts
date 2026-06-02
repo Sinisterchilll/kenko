@@ -4,7 +4,7 @@ import { getPool } from '@/lib/db';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const HUB_NAME = 'Kenko HSR | Kenko HSR';
+const HUB_NAME = 'Kenko HSR%'; // matches both 'Kenko HSR' and 'Kenko HSR | Kenko HSR'
 const TO_EMAILS  = (process.env.ALERT_TO ?? '').split(',').map(e => e.trim()).filter(Boolean);
 const FROM_EMAIL = process.env.ALERT_FROM!;
 
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
           event_timestamp,
           ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY event_timestamp DESC) AS rn
         FROM order_events
-        WHERE hub_name = $1
+        WHERE hub_name LIKE $1
           AND DATE(event_timestamp AT TIME ZONE 'Asia/Kolkata') = DATE(NOW() AT TIME ZONE 'Asia/Kolkata')
       )
 

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 
-const HUB_NAME = 'Kenko HSR | Kenko HSR';
+const HUB_NAME = 'Kenko HSR%'; // matches both 'Kenko HSR' and 'Kenko HSR | Kenko HSR'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
         ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY event_timestamp DESC) AS rn,
         ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY event_timestamp ASC)  AS rn_asc
       FROM order_events
-      WHERE hub_name = $1
+      WHERE hub_name LIKE $1
         AND DATE(event_timestamp AT TIME ZONE 'Asia/Kolkata') = $2::date
     ),
     latest AS (

@@ -3,7 +3,7 @@ import { getPool } from '@/lib/db';
 import { WINDOWS } from '@/lib/data';
 import type { DayRecord, HubDayData, WindowData, HubEntry } from '@/lib/data';
 
-const KENKO_HUB_NAME = 'Kenko HSR | Kenko HSR';
+const KENKO_HUB_NAME = 'Kenko HSR%'; // matches both 'Kenko HSR' and 'Kenko HSR | Kenko HSR'
 const KENKO_HUB: HubEntry = { id: 'hsr', name: 'HSR Layout', code: 'HSR', dbName: KENKO_HUB_NAME };
 
 function bucketsFor(win: { start: string; end: string }): string[] {
@@ -54,7 +54,7 @@ export async function GET() {
           ) AS bucket_ist,
           ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY event_timestamp DESC) AS rn
         FROM order_events
-        WHERE hub_name = $1
+        WHERE hub_name LIKE $1
           AND event_timestamp >= NOW() - INTERVAL '30 days'
       ),
       latest AS (
