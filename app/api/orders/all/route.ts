@@ -17,6 +17,7 @@ export async function GET(request: Request) {
         ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY event_timestamp ASC)  AS rn_asc
       FROM order_events
       WHERE hub_name LIKE $1
+        AND order_id ~ '^Bounce_.*[0-9]{8}$'
         AND DATE(event_timestamp AT TIME ZONE 'Asia/Kolkata') = $2::date
     ),
     latest AS (

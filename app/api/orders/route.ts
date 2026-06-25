@@ -55,6 +55,7 @@ export async function GET() {
           ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY event_timestamp DESC) AS rn
         FROM order_events
         WHERE hub_name LIKE $1
+          AND order_id ~ '^Bounce_.*[0-9]{8}$'
           AND event_timestamp >= NOW() - INTERVAL '30 days'
       ),
       latest AS (

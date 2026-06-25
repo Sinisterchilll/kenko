@@ -16,7 +16,7 @@ export async function GET(request: Request) {
       event_timestamp AT TIME ZONE 'Asia/Kolkata' AS ts,
       rider_phone_number
     FROM order_events
-    WHERE hub_name LIKE $1 AND order_id = $2
+    WHERE hub_name LIKE $1 AND order_id ~ '^Bounce_.*[0-9]{8}$' AND order_id = $2
     ORDER BY event_timestamp ASC
   `, [HUB_NAME, orderId]);
 
