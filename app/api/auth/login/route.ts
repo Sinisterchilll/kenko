@@ -1,6 +1,6 @@
 const CREDENTIALS: Record<string, string> = {
   "demo@kenko.com":         "kenko2024",
-  "kenko@bouncetask.com":   "kenko@123",
+  "kenko@bouncetask.com":   "kenko@bounce",
 };
 
 export async function POST(request: Request) {
