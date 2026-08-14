@@ -346,12 +346,12 @@ function StageBadge({ stage }: { stage: string }) {
 
 // ─── Journey Modal ─────────────────────────────────────────────────────────────
 
-function JourneyModal({ orderId, onClose }: { orderId: string; onClose: () => void }) {
+function JourneyModal({ orderId, onClose, apiPrefix }: { orderId: string; onClose: () => void; apiPrefix: string }) {
   const [events, setEvents] = useState<JourneyEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/orders/journey?order_id=${encodeURIComponent(orderId)}`)
+    fetch(`${apiPrefix}/orders/journey?order_id=${encodeURIComponent(orderId)}`)
       .then(r => r.json())
       .then(d => { setEvents(d.events ?? []); setLoading(false); })
       .catch(() => setLoading(false));
@@ -434,14 +434,14 @@ function JourneyModal({ orderId, onClose }: { orderId: string; onClose: () => vo
   );
 }
 
-function OrdersTable({ date }: { date: string }) {
+function OrdersTable({ date, apiPrefix }: { date: string; apiPrefix: string }) {
   const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [journeyOrder, setJourneyOrder] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/orders/all?date=${date}`);
+        const res = await fetch(`${apiPrefix}/orders/all?date=${date}`);
         if (!res.ok) return;
         const data = await res.json();
         setOrders(data.orders ?? []);
@@ -536,7 +536,7 @@ function OrdersTable({ date }: { date: string }) {
       </table>
 
       {journeyOrder && (
-        <JourneyModal orderId={journeyOrder} onClose={() => setJourneyOrder(null)} />
+        <JourneyModal orderId={journeyOrder} onClose={() => setJourneyOrder(null)} apiPrefix={apiPrefix} />
       )}
     </>
   );
@@ -826,7 +826,7 @@ const RANGES = [
   { id: "mtd",       label: "Month to date" },
 ];
 
-export default function DashboardClient({ user }: { user: string }) {
+export default function DashboardClient({ user, apiPrefix = '/api', logoutPath = '/api/auth/logout', loginPath = '/login' }: { user: string; apiPrefix?: string; logoutPath?: string; loginPath?: string }) {
   const router = useRouter();
   const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
@@ -844,7 +844,7 @@ export default function DashboardClient({ user }: { user: string }) {
   useEffect(() => {
     async function fetchData() {
       try {
-        const res = await fetch('/api/orders');
+        const res = await fetch(`${apiPrefix}/orders`);
         if (!res.ok) throw new Error('fetch failed');
         const data = await res.json();
         const parsed: DayRecord[] = data.days.map((d: DayRecord & { date: string }) => ({
@@ -902,8 +902,8 @@ export default function DashboardClient({ user }: { user: string }) {
   }
 
   async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
+    await fetch(logoutPath, { method: "POST" });
+    router.push(loginPath);
   }
 
   if (loading) return (
@@ -1137,7 +1137,7 @@ export default function DashboardClient({ user }: { user: string }) {
               }}>→</button>
             </div>
           </div>
-          <OrdersTable date={tableDate} />
+          <OrdersTable date={tableDate} apiPrefix={apiPrefix} />
         </div>
 
         {/* Footer */}
