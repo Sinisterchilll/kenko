@@ -15,6 +15,7 @@ export default async function TGSDashboardPage() {
       apiPrefix="/api/tgs"
       logoutPath="/api/auth/tgs/logout"
       loginPath="/tgs/login"
+      partnerName="The Gift Studio"
     />
   );
 }

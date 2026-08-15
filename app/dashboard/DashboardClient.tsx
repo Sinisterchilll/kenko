@@ -826,7 +826,7 @@ const RANGES = [
   { id: "mtd",       label: "Month to date" },
 ];
 
-export default function DashboardClient({ user, apiPrefix = '/api', logoutPath = '/api/auth/logout', loginPath = '/login' }: { user: string; apiPrefix?: string; logoutPath?: string; loginPath?: string }) {
+export default function DashboardClient({ user, apiPrefix = '/api', logoutPath = '/api/auth/logout', loginPath = '/login', partnerName = 'Kenko' }: { user: string; apiPrefix?: string; logoutPath?: string; loginPath?: string; partnerName?: string }) {
   const router = useRouter();
   const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
@@ -931,7 +931,7 @@ export default function DashboardClient({ user, apiPrefix = '/api', logoutPath =
           <div style={{
             fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 700,
             letterSpacing: "-0.01em", color: "#fff", lineHeight: 1, textTransform: "uppercase",
-          }}>kenko</div>
+          }}>{partnerName.toLowerCase()}</div>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "#3A4540", letterSpacing: "0.14em", textTransform: "uppercase" }}>
             powered by{" "}
             <span style={{ color: "#FF2D2D", animation: "bpulse 2.4s ease-in-out infinite" }}>bounce</span>
@@ -1147,7 +1147,7 @@ export default function DashboardClient({ user, apiPrefix = '/api', logoutPath =
           letterSpacing: "0.1em", textTransform: "uppercase",
           borderTop: "1px solid var(--line)", paddingTop: 16,
         }}>
-          <span style={{ whiteSpace: "nowrap" }}>Bounce × Kenko · Hub Ops</span>
+          <span style={{ whiteSpace: "nowrap" }}>Bounce × {partnerName} · Hub Ops</span>
           <span style={{ whiteSpace: "nowrap" }}>Signed in as {user}</span>
         </div>
       </div>
