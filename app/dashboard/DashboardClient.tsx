@@ -956,7 +956,7 @@ export default function DashboardClient({ user, apiPrefix = '/api', logoutPath =
                 fontWeight: 700, fontFamily: "var(--font-display)", fontSize: 13,
                 cursor: "pointer",
               }}
-            >K</div>
+            >{user[0].toUpperCase()}</div>
             {avatarOpen && (
               <div
                 onMouseDown={e => e.stopPropagation()}

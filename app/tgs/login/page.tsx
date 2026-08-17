@@ -187,7 +187,7 @@ export default function TGSLoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="tgf@bouncetask.com"
+              placeholder="tgs@bouncetask.com"
               autoComplete="email"
               style={{
                 width: "100%", background: "#111",
