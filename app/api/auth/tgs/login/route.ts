@@ -1,5 +1,5 @@
 const CREDENTIALS: Record<string, string> = {
-  "tgf@bouncetask.com": "tgf@bounce",
+  "tgs@bouncetask.com": "tgs@bounce",
 };
 
 export async function POST(request: Request) {
