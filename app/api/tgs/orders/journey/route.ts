@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 
-// TODO: Update TGF_HUB_NAME once confirmed
-const HUB_NAME = 'TGF%';
+const HUB_NAME = 'Bounce-TGF%';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
